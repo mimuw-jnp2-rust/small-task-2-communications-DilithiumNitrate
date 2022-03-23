@@ -76,16 +76,20 @@ impl Client {
     // The client should send a handshake to the server.
     fn open(&mut self, addr: &str, server: Server) -> CommsResult<()> {
         if let Some(_) = self.connections.get(addr) {
-            return Err(CommsError::ConnectionExists(self.ip.clone()));
+            return Err(CommsError::ConnectionExists(addr.to_string()));
         }
         
-        self.send(addr, Message {
+        self.connections.insert(addr.to_string(), Connection::Open(server));
+        match self.send(addr, Message {
             msg_type: MessageType::Handshake,
-            load: String::from(addr)
-        })?;
-        
-        self.connections.insert(String::from(addr), Connection::Open(server));
-        Ok(())
+            load: String::from(self.ip.clone())
+        }) {
+            Ok(_) => Ok(()),
+            Err(e) => {
+                self.connections.remove(addr);
+                Err(e)
+            }
+        }
     }
 
     // Sends the provided message to the server at the given `addr`.
@@ -96,9 +100,13 @@ impl Client {
         match self.connections.get_mut(addr) {
             None => Err(CommsError::ConnectionNotFound(String::from(addr))),
             Some(conn) => match conn {
-                Connection::Closed => Err(CommsError::ConnectionClosed(String::from(addr))),
+                Connection::Closed => Err(CommsError::ConnectionClosed(addr.to_string())),
                 Connection::Open(srv) => {
-                    srv.receive(msg)
+                    let mr = srv.receive(msg);
+                    if let Err(CommsError::ServerLimitReached(_)) = &mr {
+                        *conn = Connection::Closed;
+                    }
+                    mr
                 }
             }
         }
@@ -120,9 +128,9 @@ impl Client {
     // Returns the number of closed connections
     #[allow(dead_code)]
     fn count_closed(&self) -> usize {
-        self.connections.values().filter(|v| match *v {
-            Connection::Closed => false,
-            Connection::Open(_) => true,
+        self.connections.values().filter(|&v| match v {
+            Connection::Closed => true,
+            Connection::Open(_) => false,
         }).count()
     }
 }

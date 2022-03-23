@@ -75,15 +75,19 @@ impl Client {
     // Method should return an error when a connection already exists.
     // The client should send a handshake to the server.
     fn open(&mut self, addr: &str, server: Server) -> CommsResult<()> {
-        if let Some(_) = self.connections.get(addr) {
+        if self.connections.get(addr).is_some() {
             return Err(CommsError::ConnectionExists(addr.to_string()));
         }
-        
-        self.connections.insert(addr.to_string(), Connection::Open(server));
-        match self.send(addr, Message {
-            msg_type: MessageType::Handshake,
-            load: String::from(self.ip.clone())
-        }) {
+
+        self.connections
+            .insert(addr.to_string(), Connection::Open(server));
+        match self.send(
+            addr,
+            Message {
+                msg_type: MessageType::Handshake,
+                load: self.ip.clone(),
+            },
+        ) {
             Ok(_) => Ok(()),
             Err(e) => {
                 self.connections.remove(addr);
@@ -108,7 +112,7 @@ impl Client {
                     }
                     mr
                 }
-            }
+            },
         }
     }
 
@@ -128,10 +132,13 @@ impl Client {
     // Returns the number of closed connections
     #[allow(dead_code)]
     fn count_closed(&self) -> usize {
-        self.connections.values().filter(|&v| match v {
-            Connection::Closed => true,
-            Connection::Open(_) => false,
-        }).count()
+        self.connections
+            .values()
+            .filter(|&v| match v {
+                Connection::Closed => true,
+                Connection::Open(_) => false,
+            })
+            .count()
     }
 }
 
@@ -141,7 +148,6 @@ enum Response {
     PostReceived,
     GetCount(u32),
 }
-
 
 #[derive(Clone)]
 struct Server {
@@ -157,7 +163,7 @@ impl Server {
             name,
             post_count: 0,
             limit,
-            connected_client: None
+            connected_client: None,
         }
     }
 
@@ -175,7 +181,7 @@ impl Server {
                 None => {
                     self.connected_client = Some(msg.load);
                     Ok(Response::HandshakeReceived)
-                },
+                }
                 Some(_) => Err(CommsError::UnexpectedHandshake(self.name.clone())),
             },
             MessageType::Post => {
